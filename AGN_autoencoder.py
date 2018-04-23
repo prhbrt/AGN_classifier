@@ -1,7 +1,6 @@
 import os, sys, glob
-import pandas
+import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
 #import skimage.io
 import pickle
 import time
@@ -22,6 +21,20 @@ from sklearn import manifold
 from sklearn.cluster import KMeans
 from sklearn.manifold import TSNE #single core TSNE, sklearn.
 from MulticoreTSNE import MulticoreTSNE as multiTSNE #multicore TSNE, not sklearn implementation.
+
+import matplotlib.pyplot as plt
+# import seaborn as sns
+# sns.set()
+# sns.set_style({'legend.frameon': True})
+
+from matplotlib import rcParams
+rcParams['font.family'] = 'Latin Modern Roman'
+
+import matplotlib.colors as colors
+import matplotlib.cm as cmx
+
+figloc = 'Figures/'
+
 
 #functions for saving/loading objects (arrays, data frames, etc)
 def save_obj(obj, name ):
@@ -201,11 +214,185 @@ def RF_pipeline(data, train_percent, n_jobs=-1, n_estimators=500, pruning=False)
     #if not None:
     #    return classes_important_pred
 
+def savemodel(model, savename):
+    """
+    Save a Keras model
+    """
+    model_json = model.to_json()
+    with open(f'{savename}.json', 'w') as json_file:
+        json_file.write(model_json)
+    #save weights
+    model.save_weights(f'{savename}.h5')
+    print('Saved NN model to disk')
+
+def loadmodel(savename):
+    """
+    Load a Keras model from disk. You have to recompile the model
+    after loading it.
+    """
+    from keras.models import model_from_json
+
+    json_file = open(f'{savename}.json', 'r')
+    loaded_model_json = json_file.read()
+    json_file.close()
+    model = model_from_json(loaded_model_json)
+
+    # load weights into new model
+    model.load_weights(f'{savename}.h5')
+    print('Loaded model from disk')
+
+    return model
+
 def autoencoder(data):
     """
     Apply autoencoder to SDSS data
     """
+    from keras.layers import Input, Dense, Dropout
+    from keras.models import Model
+    from keras.layers.normalization import BatchNormalization
+    from keras import optimizers
+
+    from sklearn.model_selection import train_test_split
+
+    #whether to make a new model
+    newmodel = True
+
+    #version name of the model
+    modelname = '_v4'
+
+    #location of the to be saved models
+    modelloc = 'Models_autoencoder/'
+
+    n_epochs = 20
+    batch_size = 64
+    lossfunction = 'mean_squared_error'
+    optimizer = 'rmsprop'
+    learning_rate = 1e-4
+
+    encoder_activation = 'sigmoid'
+
+    Xin = data['features_train']
+    Yin = data['classes_train']
+
+    #obtain data arrays
+    X = []
+    for k in Xin.keys():
+        print(f'Adding {k}')
+        X.append(Xin[k])
+
+    Y = []
+    for k in Yin.keys():
+        Y.append(Yin[k])
+
+    X = np.array(X).T
+    Y = np.array(Y)
+
+    #slice train and test data
+    Xtrain, Xtest, Ytrain, Ytest = train_test_split(X, Y, test_size=0.05, random_state=42)
+
+    # Xtrain = Xtrain[:100]
+    # Ytrain = Ytrain[:100]
+
+    if optimizer == 'Adam':
+        optim = optimizers.Adam(lr = learning_rate)
+    elif optimizer == 'rmsprop':
+        optim = optimizers.RMSprop(lr = learning_rate)
     
+    if newmodel:
+        inputs = Input(shape=(Xtrain.shape[1],))
+        x = BatchNormalization()(inputs)
+        x = Dense(10, activation = 'relu')(x)
+        x = Dense(5, activation = 'relu')(x)
+        encoded = Dense(2, activation = encoder_activation)(x)
+
+        x = Dense(5, activation = 'relu')(encoded)
+        x = Dense(10, activation = 'relu')(x)
+        decoded = Dense(Xtrain.shape[1], activation = 'relu')(x)
+        # decoded = LeakyReLU(alpha=.001)(x)
+
+        encoder = Model(inputs, encoded)
+        autoencoder = Model(inputs, decoded)
+
+        autoencoder.compile(loss=lossfunction,
+                          optimizer=optim,
+                          metrics=['acc'])
+
+        autoencoder.summary()
+
+        autoencoder.fit(Xtrain, Xtrain, 
+                        epochs = n_epochs, 
+                        batch_size = batch_size,
+                        shuffle = True)
+
+        savemodel(autoencoder, f'{modelloc}autoencoder{modelname}')
+        savemodel(encoder, f'{modelloc}encoder{modelname}')
+
+        #save the autoencoder settings
+        modelsettings = pd.read_csv('modelsettings.csv')
+        '''
+        appenddata = pd.DataFrame(np.array([
+                                    modelname[1:],
+                                    n_epochs,
+                                    batch_size,
+                                    lossfunction,
+                                    optimizer,
+                                    encoder_activation
+                                    ]).T, 
+                                columns=list(modelsettings.columns))
+        # modelsettings.append(appenddata, ignore_index=True)
+        '''
+
+        appenddata = np.array([
+                                modelname[1:],
+                                n_epochs,
+                                batch_size,
+                                lossfunction,
+                                optimizer,
+                                encoder_activation,
+                                learning_rate
+                                ]).T
+
+        if modelname[1:] in modelsettings['Version']:
+            appendloc = np.where(modelname[1:] == modelsettings['Version'])
+        else:
+            appendloc = len(modelsettings)
+        modelsettings.loc[appendloc] = appenddata
+
+        # modelsettings['Version'] = np.append(modelname[1:], modelsettings['Version'])
+        # modelsettings['n epochs'] = np.append(n_epochs, modelsettings['n epochs'])
+        # modelsettings['Batch size'] = np.append(batch_size, modelsettings['Batch size'])
+        # modelsettings['Loss function'] = np.append(lossfunction, modelsettings['Loss function'])
+        # modelsettings['Optimizer'] = np.append(optimizer, modelsettings['Optimizer'])
+        # modelsettings['Encoder activation'] = np.append(encoder_activation, modelsettings['Encoder activation'])
+
+        modelsettings.to_csv('modelsettings.csv', index = False)
+        
+
+        del autoencoder, encoder
+
+    autoencoder = loadmodel(f'{modelloc}autoencoder{modelname}')
+    encoder = loadmodel(f'{modelloc}encoder{modelname}')
+
+    encoder.compile(loss=lossfunction,
+                          optimizer=optim,
+                          metrics=['acc'])
+
+    Yenc = encoder.predict(Xtest)
+
+    #find the unique labels in the test set
+    unique_labels = np.unique(Ytest)
+
+    #obtain colours for the different airlines
+    jet = plt.get_cmap('plasma') 
+    cNorm  = colors.Normalize(vmin = 0, vmax = len(unique_labels) - 1)
+    scalarMap = cmx.ScalarMappable(norm = cNorm, cmap = jet)
+
+    for i, label in enumerate(unique_labels):
+        plt.scatter(Yenc[Ytest == label, 0], Yenc[Ytest == label, 1], s = 2, color = scalarMap.to_rgba(i), label = label)
+
+    plt.legend(loc = 'best')
+    plt.savefig(f'{figloc}SDSS_autoencoder{modelname}.png', dpi = 300, bbox_inches = 'tight')
+    plt.show()
 
 
 #########################################################################
@@ -227,6 +414,9 @@ prepared_data = prepare_data(input_table, trim_columns, train_percent, verbose=T
 #Prepared_data is a dictionary with keys: features_train, features_test, classes_train, classes_test, class_names, feature_names
 #Note that class_names are unique names
 
+
+#run the autoencoder
+autoencoder(prepared_data)
 
 '''
 
