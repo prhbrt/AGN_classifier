@@ -77,79 +77,104 @@ def plot_confusion_matrix(cm, classes,
     plt.xlabel('Predicted label')
 
 #Function to prepare data for Machine Learning
-def prepare_data(filename, trim_columns, train_percent=0.5, verbose=True, tsne=False):
+def prepare_data(datasource = 'SDSS'):
 
     try:
         print('Trying to load old data')
-        Xtrain = np.load('Xtrain.npy')
-        Xtest = np.load('Xtest.npy')
-        Ytrain = np.load('Ytrain.npy')
-        Ytest = np.load('Ytest.npy')
+        Xtrain = np.load(f'{datasource}_Xtrain.npy')
+        Xtest = np.load(f'{datasource}_Xtest.npy')
+        Ytrain = np.load(f'{datasource}_Ytrain.npy')
+        Ytest = np.load(f'{datasource}_Ytest.npy')
     except:
-        if verbose==True: print('loading saved tables from disk: '+filename)
-        data_table=load_obj(filename)
-        #if verbose==True: print(data_table)
-        if verbose==True: print('The table loaded is of shape: {0}'.format(data_table.shape))
-        #trim away unwanted columns
-        #data_table_trim=data_table.drop(columns=['#ra', 'dec', 'z', 'class'])
-        data_table_trim=data_table.drop(columns=trim_columns)
-        all_features=data_table_trim[:]
-        #print(all_features)
-        all_classes=data_table['class']
-        #split data up into test/train
-        features_train, features_test, classes_train, classes_test = train_test_split(all_features, all_classes, train_size=train_percent, random_state=0, stratify=all_classes)
-        class_names=np.unique(all_classes)
-        feature_names=list(all_features)
-        if verbose==True: print('feature names are: ', str(feature_names))
-        #return dictionary: features_train, features_test, classes_train, classes_test, class_names, feature_names
+        if datasource == 'SDSS':
+            if verbose==True: print('loading saved tables from disk: '+filename)
+            data_table=load_obj(filename)
+            #if verbose==True: print(data_table)
+            if verbose==True: print('The table loaded is of shape: {0}'.format(data_table.shape))
+            #trim away unwanted columns
+            #data_table_trim=data_table.drop(columns=['#ra', 'dec', 'z', 'class'])
+            data_table_trim=data_table.drop(columns=trim_columns)
+            all_features=data_table_trim[:]
+            #print(all_features)
+            all_classes=data_table['class']
+            #split data up into test/train
+            features_train, features_test, classes_train, classes_test = train_test_split(all_features, all_classes, train_size=train_percent, random_state=0, stratify=all_classes)
+            class_names=np.unique(all_classes)
+            feature_names=list(all_features)
+            if verbose==True: print('feature names are: ', str(feature_names))
+            #return dictionary: features_train, features_test, classes_train, classes_test, class_names, feature_names
 
-        # Xtrain_in = data['features_train']
-        # Ytrain_in = data['classes_train']
-        # Xtest_in = data['features_test']
-        # Ytest_in = data['classes_test']
+            # Xtrain_in = data['features_train']
+            # Ytrain_in = data['classes_train']
+            # Xtest_in = data['features_test']
+            # Ytest_in = data['classes_test']
 
-        print('Obtaining data arrays...')
-        #obtain data arrays
-        # X = np.empty((0, Xtrain_in.shape[1]))
-        X = []
-        for k in features_train.keys():
-            print(f'Adding {k}')
-            X.append(np.concatenate((features_train[k], features_test[k])))
+            print('Obtaining data arrays...')
+            #obtain data arrays
+            # X = np.empty((0, Xtrain_in.shape[1]))
+            X = []
+            for k in features_train.keys():
+                print(f'Adding {k}')
+                X.append(np.concatenate((features_train[k], features_test[k])))
 
-        Y = []
-        for k in classes_train.keys():
-            Y.append(classes_train[k])
-        for k in classes_test.keys():
-            Y.append(classes_test[k])
+            Y = []
+            for k in classes_train.keys():
+                Y.append(classes_train[k])
+            for k in classes_test.keys():
+                Y.append(classes_test[k])
 
-        X = np.array(X).T
-        Y = np.array(Y)
+            X = np.array(X).T
+            Y = np.array(Y)
 
-        ##################
-        # Remove rows with missing values or radio columns
-        ##################
-        '''
-        print('Removing missing values')
-        #remove all rows which contain a magnitude 0
-        removeloc = ~np.any(X == 0, axis=1)
-        X = X[removeloc]
-        Y = Y[removeloc]
-        '''
-        #remove the last 5 columns of radio data
-        X = X[:,:-5]
+            ##################
+            # Remove rows with missing values or radio columns
+            ##################
+            '''
+            print('Removing missing values')
+            #remove all rows which contain a magnitude 0
+            removeloc = ~np.any(X == 0, axis=1)
+            X = X[removeloc]
+            Y = Y[removeloc]
+            '''
+            #remove the last 5 columns of radio data
+            X = X[:,:-5]
 
-        #remove all rows which contain a too small magnitude
-        removeloc = ~np.any(X < -10, axis=1)
-        X = X[removeloc]
-        Y = Y[removeloc]
+            #remove all rows which contain a too small magnitude
+            removeloc = ~np.any(X < -10, axis=1)
+            X = X[removeloc]
+            Y = Y[removeloc]
 
-        #slice train and test data
-        Xtrain, Xtest, Ytrain, Ytest = train_test_split(X, Y, test_size=0.001, random_state=42) 
+            #slice train and test data
+            Xtrain, Xtest, Ytrain, Ytest = train_test_split(X, Y, test_size=0.001, random_state=42) 
+        elif datasource == 'ZFOURGE':
+            dropcolumns = np.array(['use', 'star', 'lssfr', 'Unnamed: 0', 'ir_agn', 'radio_agn', 'xray_agn'])
 
-        np.save('Xtrain.npy', Xtrain)
-        np.save('Xtest.npy', Xtest)
-        np.save('Ytrain.npy', Ytrain)
-        np.save('Ytest.npy', Ytest)
+            data = pd.read_csv('ZFOURGE_Data.csv')
+            data = data.drop(dropcolumns, 1)
+
+            #filter out extreme outliers like 10^24 mag
+            for jj in data.columns:
+                if jj.startswith('f_'):
+                    data = data[data[jj] < np.percentile(data[jj], 99.9)]
+
+            Y = np.array(data['classes'])
+            X = np.array(data.drop('classes', 1))
+
+            print(X.shape)
+            print(Y.shape)
+
+            #set all AGNs to 1
+            Y[Y > 0] = 1
+
+            #slice train and test data
+            Xtrain, Xtest, Ytrain, Ytest = train_test_split(X, Y, test_size=0.001, random_state=42) 
+
+            feature_names = data.columns
+
+        np.save(f'{datasource}_Xtrain.npy', Xtrain)
+        np.save(f'{datasource}_Xtest.npy', Xtest)
+        np.save(f'{datasource}_Ytrain.npy', Ytrain)
+        np.save(f'{datasource}_Ytest.npy', Ytest)
 
         print(feature_names)
 
@@ -299,7 +324,7 @@ def loadmodel(savename):
 
     return model
 
-def autoencoder(Xtrain, Xtest, Ytrain, Ytest):
+def autoencoder(Xtrain, Xtest, Ytrain, Ytest, datasource = 'SDSS'):
     """
     Apply autoencoder to SDSS data
     """
@@ -317,26 +342,26 @@ def autoencoder(Xtrain, Xtest, Ytrain, Ytest):
     newmodel = False
 
     #version name of the model
-    modelname = '_v17'
+    modelname = f'_v23'
 
     #location of the to be saved models
     modelloc = 'Models_autoencoder/'
 
     #whether to run a clustering algorithm
-    runclustering = True
+    runclustering = False
 
     #whether to plot the train or test set
-    plottest = True
+    plottest = False
 
-    n_epochs = 2
-    batch_size = 128
+    n_epochs = 20
+    batch_size = 16
     lossfunction = 'mean_squared_error'
     optimizer = 'Adam'
-    learning_rate = 1e-3
-    mid_activation = 'tanh'
-    encoder_activation = 'tanh'
-    batchnormalization = False
-    dropout = False
+    learning_rate = 1e-4
+    mid_activation = 'relu'
+    encoder_activation = 'relu'
+    batchnormalization = True
+    dropout = True
 
     print(f'Train size: {Xtrain.shape}')
     print(f'Test size: {Xtest.shape}')
@@ -350,16 +375,22 @@ def autoencoder(Xtrain, Xtest, Ytrain, Ytest):
         inputs = Input(shape=(Xtrain.shape[1],))
         if batchnormalization:
             x = BatchNormalization()(inputs)
-            x = Dense(10, activation = mid_activation)(x)
+            x = Dense(60, activation = mid_activation)(x)
         else:
-            x = Dense(10, activation = mid_activation)(inputs)
+            x = Dense(60, activation = mid_activation)(inputs)
         if dropout:
             x = Dropout(0.3)(x)
-        x = Dense(5, activation = mid_activation)(x)
+        x = Dense(40, activation = mid_activation)(x)
+        if dropout:
+            x = Dropout(0.3)(x)
+        x = Dense(12, activation = mid_activation)(x)
         encoded = Dense(2, activation = encoder_activation)(x)
 
-        x = Dense(5, activation = mid_activation)(encoded)
-        x = Dense(10, activation = mid_activation)(x)
+        x = Dense(12, activation = mid_activation)(encoded)
+        x = Dense(40, activation = mid_activation)(x)
+        if dropout:
+            x = Dropout(0.3)(x)
+        x = Dense(60, activation = mid_activation)(x)
         if dropout:
             x = Dropout(0.3)(x)
         decoded = Dense(Xtrain.shape[1], activation = 'relu')(x)
@@ -377,7 +408,8 @@ def autoencoder(Xtrain, Xtest, Ytrain, Ytest):
         history = autoencoder.fit(Xtrain, Xtrain, 
                         epochs = n_epochs, 
                         batch_size = batch_size,
-                        shuffle = True)
+                        shuffle = True,
+                        validation_split = 0.05)
 
         savemodel(autoencoder, f'{modelloc}autoencoder{modelname}')
         savemodel(encoder, f'{modelloc}encoder{modelname}')
@@ -408,7 +440,8 @@ def autoencoder(Xtrain, Xtest, Ytrain, Ytest):
                                 mid_activation,
                                 learning_rate,
                                 batchnormalization,
-                                dropout
+                                dropout,
+                                datasource
                                 ]).T
 
         if modelname[1:] in modelsettings['Version']:
@@ -434,27 +467,32 @@ def autoencoder(Xtrain, Xtest, Ytrain, Ytest):
             Xplot = Xtest
             Yplot = Ytest
             unique_labels = np.unique(Ytest)
-            savename = f'{figloc}SDSS_autoencoder{modelname}_test.png'
+            savename = f'{figloc}{datasource}_autoencoder{modelname}_test.png'
         else:
             Yenc = encoder.predict(Xtrain)
             Xplot = Xtrain
             Yplot = Ytrain
-            savename = f'{figloc}SDSS_autoencoder{modelname}_train.png'
+            savename = f'{figloc}{datasource}_autoencoder{modelname}_train.png'
 
         #find the unique labels 
         unique_labels = np.unique(Ytrain)
 
         #obtain colours for the different labels
-        jet = plt.get_cmap('plasma') 
+        jet = plt.get_cmap('summer') 
         cNorm  = colors.Normalize(vmin = 0, vmax = len(unique_labels) - 1)
         scalarMap = cmx.ScalarMappable(norm = cNorm, cmap = jet)
+
+        if len(unique_labels) < 3:
+            colours = ['#09A309', '#E3562B', '#773BE3']
+        else:
+            colours = scalarMap.to_rgba
 
         stepsize = 50
         #plot in batches of stepsize to prevent the overlap of scatter points
         for j in range(0, Yenc.shape[0] - stepsize, stepsize):
             print(f'{j}/{Yenc.shape[0]}')
             for i, label in enumerate(unique_labels):
-                plt.scatter(Yenc[j:j + stepsize][Yplot[j:j + stepsize] == label, 0], Yenc[j:j + stepsize][Yplot[j:j + stepsize] == label, 1], s = 2, color = scalarMap.to_rgba(i))
+                plt.scatter(Yenc[j:j + stepsize][Yplot[j:j + stepsize] == label, 0], Yenc[j:j + stepsize][Yplot[j:j + stepsize] == label, 1], s = 2, color = colours[i])
 
         #turn of axis labels
         # ax = plt.gca()
@@ -467,6 +505,7 @@ def autoencoder(Xtrain, Xtest, Ytrain, Ytest):
             labels.append(f'{lab} ({np.sum(Yplot == lab)})')
 
         plt.legend(labels, loc = 'best')
+        plt.title('Autoencoder 2D encoder output')
         plt.savefig(savename, dpi = 300, bbox_inches = 'tight')
         plt.show()
     else:
@@ -546,13 +585,17 @@ train_percent=0.1 #fraction
 n_estimators=100 #number of trees
 
 #Load and prepare data for machine learning
-Xtrain, Xtest, Ytrain, Ytest = prepare_data(input_table, trim_columns, train_percent, verbose=True)
+Xtrain, Xtest, Ytrain, Ytest = prepare_data(datasource = 'ZFOURGE')
 #Prepared_data is a dictionary with keys: features_train, features_test, classes_train, classes_test, class_names, feature_names
 #Note that class_names are unique names
 
 
 #run the autoencoder
-autoencoder(Xtrain, Xtest, Ytrain, Ytest)
+autoencoder(Xtrain, Xtest, Ytrain, Ytest, datasource = 'ZFOURGE')
+
+
+
+
 
 '''
 
