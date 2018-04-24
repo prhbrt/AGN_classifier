@@ -311,23 +311,23 @@ def autoencoder(Xtrain, Xtest, Ytrain, Ytest):
     from sklearn.model_selection import train_test_split
 
     #whether to make a new model
-    newmodel = True
+    newmodel = False
 
     #version name of the model
-    modelname = '_v15'
+    modelname = '_v17'
 
     #location of the to be saved models
     modelloc = 'Models_autoencoder/'
 
     n_epochs = 2
-    batch_size = 64
+    batch_size = 128
     lossfunction = 'mean_squared_error'
-    optimizer = 'rmsprop'
-    learning_rate = 1e-4
+    optimizer = 'Adam'
+    learning_rate = 1e-3
     mid_activation = 'tanh'
-    encoder_activation = 'sigmoid'
+    encoder_activation = 'tanh'
     batchnormalization = True
-    dropout = True
+    dropout = False
 
     print(f'Train size: {Xtrain.shape}')
     print(f'Test size: {Xtest.shape}')
@@ -429,10 +429,23 @@ def autoencoder(Xtrain, Xtest, Ytrain, Ytest):
     cNorm  = colors.Normalize(vmin = 0, vmax = len(unique_labels) - 1)
     scalarMap = cmx.ScalarMappable(norm = cNorm, cmap = jet)
 
-    for i, label in enumerate(unique_labels):
-        plt.scatter(Yenc[Ytest == label, 0], Yenc[Ytest == label, 1], s = 2, color = scalarMap.to_rgba(i), label = label)
+    stepsize = 50
+    #plot in batches of stepsize to prevent the overlap of scatter points
+    for j in range(0, Yenc.shape[0] - stepsize, stepsize):
+        for i, label in enumerate(unique_labels):
+            plt.scatter(Yenc[j:j + stepsize][Ytest[j:j + stepsize] == label, 0], Yenc[j:j + stepsize][Ytest[j:j + stepsize] == label, 1], s = 2, color = scalarMap.to_rgba(i))
 
-    plt.legend(loc = 'best')
+    #turn of axis labels
+    ax = plt.gca()
+    ax.xaxis.set_major_formatter(matplotlib.ticker.NullFormatter())
+    ax.yaxis.set_major_formatter(matplotlib.ticker.NullFormatter())
+
+    #make the labels for the legend
+    labels = []
+    for lab in unique_labels:
+        labels.append(f'{lab} ({np.sum(Ytest == lab)})')
+
+    plt.legend(labels, loc = 'best')
     plt.savefig(f'{figloc}SDSS_autoencoder{modelname}.png', dpi = 300, bbox_inches = 'tight')
     plt.show()
 
