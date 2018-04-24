@@ -78,27 +78,82 @@ def plot_confusion_matrix(cm, classes,
 
 #Function to prepare data for Machine Learning
 def prepare_data(filename, trim_columns, train_percent=0.5, verbose=True, tsne=False):
-    if verbose==True: print('loading saved tables from disk: '+filename)
-    data_table=load_obj(filename)
-    #if verbose==True: print(data_table)
-    if verbose==True: print('The table loaded is of shape: {0}'.format(data_table.shape))
-    #trim away unwanted columns
-    #data_table_trim=data_table.drop(columns=['#ra', 'dec', 'z', 'class'])
-    data_table_trim=data_table.drop(columns=trim_columns)
-    all_features=data_table_trim[:]
-    #print(all_features)
-    all_classes=data_table['class']
-    #split data up into test/train
-    features_train, features_test, classes_train, classes_test = train_test_split(all_features, all_classes, train_size=train_percent, random_state=0, stratify=all_classes)
-    class_names=np.unique(all_classes)
-    feature_names=list(all_features)
-    if verbose==True: print('feature names are: ', str(feature_names))
-    #return dictionary: features_train, features_test, classes_train, classes_test, class_names, feature_names
 
-    if tsne==False:
-        return {'features_train':features_train, 'features_test':features_test, 'classes_train':classes_train, 'classes_test':classes_test, 'class_names':class_names, 'feature_names':feature_names}
-    if tsne==True:
-        return {'all_features':all_features, 'all_classes':all_classes}
+    try:
+        print('Trying to load old data')
+        Xtrain = np.load('Xtrain.npy')
+        Xtest = np.load('Xtest.npy')
+        Ytrain = np.load('Ytrain.npy')
+        Ytest = np.load('Ytest.npy')
+    except:
+        if verbose==True: print('loading saved tables from disk: '+filename)
+        data_table=load_obj(filename)
+        #if verbose==True: print(data_table)
+        if verbose==True: print('The table loaded is of shape: {0}'.format(data_table.shape))
+        #trim away unwanted columns
+        #data_table_trim=data_table.drop(columns=['#ra', 'dec', 'z', 'class'])
+        data_table_trim=data_table.drop(columns=trim_columns)
+        all_features=data_table_trim[:]
+        #print(all_features)
+        all_classes=data_table['class']
+        #split data up into test/train
+        features_train, features_test, classes_train, classes_test = train_test_split(all_features, all_classes, train_size=train_percent, random_state=0, stratify=all_classes)
+        class_names=np.unique(all_classes)
+        feature_names=list(all_features)
+        if verbose==True: print('feature names are: ', str(feature_names))
+        #return dictionary: features_train, features_test, classes_train, classes_test, class_names, feature_names
+
+        # Xtrain_in = data['features_train']
+        # Ytrain_in = data['classes_train']
+        # Xtest_in = data['features_test']
+        # Ytest_in = data['classes_test']
+
+        print('Obtaining data arrays...')
+        #obtain data arrays
+        # X = np.empty((0, Xtrain_in.shape[1]))
+        X = []
+        for k in features_train.keys():
+            print(f'Adding {k}')
+            X.append(np.concatenate((features_train[k], features_test[k])))
+
+        Y = []
+        for k in classes_train.keys():
+            Y.append(classes_train[k])
+        for k in classes_test.keys():
+            Y.append(classes_test[k])
+
+        X = np.array(X).T
+        Y = np.array(Y)
+
+        ##################
+        # Remove rows with missing values or radio columns
+        ##################
+        '''
+        print('Removing missing values')
+        #remove all rows which contain a magnitude 0
+        removeloc = ~np.any(X == 0, axis=1)
+        X = X[removeloc]
+        Y = Y[removeloc]
+        '''
+        #remove the last 5 columns of radio data
+        X = X[:,:-5]
+
+        #remove all rows which contain a too small magnitude
+        removeloc = ~np.any(X < -10, axis=1)
+        X = X[removeloc]
+        Y = Y[removeloc]
+
+        #slice train and test data
+        Xtrain, Xtest, Ytrain, Ytest = train_test_split(X, Y, test_size=0.001, random_state=42) 
+
+        np.save('Xtrain.npy', Xtrain)
+        np.save('Xtest.npy', Xtest)
+        np.save('Ytrain.npy', Ytrain)
+        np.save('Ytest.npy', Ytest)
+
+        print(feature_names)
+
+    return Xtrain, Xtest, Ytrain, Ytest
 
 #Function to create a TSNE plot
 def TSNE_plot(all_features, all_classes, n_iter=2000, lrate=500, verbose=False, multicore=False):
@@ -244,7 +299,7 @@ def loadmodel(savename):
 
     return model
 
-def autoencoder(data):
+def autoencoder(Xtrain, Xtest, Ytrain, Ytest):
     """
     Apply autoencoder to SDSS data
     """
@@ -259,69 +314,23 @@ def autoencoder(data):
     newmodel = True
 
     #version name of the model
-    modelname = '_v9'
+    modelname = '_v15'
 
     #location of the to be saved models
     modelloc = 'Models_autoencoder/'
 
-    n_epochs = 10
-    batch_size = 128
+    n_epochs = 2
+    batch_size = 64
     lossfunction = 'mean_squared_error'
     optimizer = 'rmsprop'
     learning_rate = 1e-4
-    mid_activation = 'relu'
+    mid_activation = 'tanh'
     encoder_activation = 'sigmoid'
-
-    Xtrain_in = data['features_train']
-    Ytrain_in = data['classes_train']
-    Xtest_in = data['features_test']
-    Ytest_in = data['classes_test']
-
-    print('Obtaining data arrays...')
-    #obtain data arrays
-    Xtrain = []
-    Xtest = []
-    for k in Xtrain_in.keys():
-        print(f'Adding {k}')
-        Xtrain.append(Xtrain_in[k])
-        Xtest.append(Xtest_in[k])
-
-    Ytrain = []
-    Ytest = []
-    for k in Ytrain_in.keys():
-        Ytrain.append(Ytrain_in[k])
-    for k in Ytest_in.keys():
-        Ytest.append(Ytest_in[k])
-
-    Xtrain = np.array(Xtrain).T
-    Xtest = np.array(Xtest).T
-    Ytrain = np.array(Ytrain)
-    Ytest = np.array(Ytest)
-
-    print('Removing missing values')
-    #remove all rows which contain a magnitude 0
-    remove_train = ~np.any(Xtrain == 0, axis=1)
-    Xtrain = Xtrain[remove_train]
-    Ytrain = Ytrain[remove_train]
-    remove_test = ~np.any(Xtest == 0, axis=1)
-    Xtest = Xtest[remove_test]
-    Ytest = Ytest[remove_test]
+    batchnormalization = True
+    dropout = True
 
     print(f'Train size: {Xtrain.shape}')
     print(f'Test size: {Xtest.shape}')
-
-    print(data['feature_names'])
-    print(Xtrain[0])
-    print(Xtrain[1])
-    print(Xtrain[2])
-
-    return 0
-
-    #slice train and test data
-    # Xtrain, Xtest, Ytrain, Ytest = train_test_split(X, Y, test_size=0.05, random_state=42) 
-
-    # Xtrain = Xtrain[:100]
-    # Ytrain = Ytrain[:100]
 
     if optimizer == 'Adam':
         optim = optimizers.Adam(lr = learning_rate)
@@ -330,13 +339,20 @@ def autoencoder(data):
     
     if newmodel:
         inputs = Input(shape=(Xtrain.shape[1],))
-        x = BatchNormalization()(inputs)
-        x = Dense(10, activation = mid_activation)(x)
+        if batchnormalization:
+            x = BatchNormalization()(inputs)
+            x = Dense(10, activation = mid_activation)(x)
+        else:
+            x = Dense(10, activation = mid_activation)(inputs)
+        if dropout:
+            x = Dropout(0.3)(x)
         x = Dense(5, activation = mid_activation)(x)
         encoded = Dense(2, activation = encoder_activation)(x)
 
         x = Dense(5, activation = mid_activation)(encoded)
         x = Dense(10, activation = mid_activation)(x)
+        if dropout:
+            x = Dropout(0.3)(x)
         decoded = Dense(Xtrain.shape[1], activation = 'relu')(x)
         # decoded = LeakyReLU(alpha=.001)(x)
 
@@ -381,7 +397,9 @@ def autoencoder(data):
                                 optimizer,
                                 encoder_activation,
                                 mid_activation,
-                                learning_rate
+                                learning_rate,
+                                batchnormalization,
+                                dropout
                                 ]).T
 
         if modelname[1:] in modelsettings['Version']:
@@ -434,13 +452,13 @@ train_percent=0.1 #fraction
 n_estimators=100 #number of trees
 
 #Load and prepare data for machine learning
-prepared_data = prepare_data(input_table, trim_columns, train_percent, verbose=True)
+Xtrain, Xtest, Ytrain, Ytest = prepare_data(input_table, trim_columns, train_percent, verbose=True)
 #Prepared_data is a dictionary with keys: features_train, features_test, classes_train, classes_test, class_names, feature_names
 #Note that class_names are unique names
 
 
 #run the autoencoder
-autoencoder(prepared_data)
+autoencoder(Xtrain, Xtest, Ytrain, Ytest)
 
 '''
 
