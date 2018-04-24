@@ -308,9 +308,10 @@ def autoencoder(Xtrain, Xtest, Ytrain, Ytest):
     from keras.layers.normalization import BatchNormalization
     from keras import optimizers
 
-    from sklearn.model_selection import train_test_split
     from sklearn.svm import SVC
     from sklearn import metrics
+
+    import hdbscan
 
     #whether to make a new model
     newmodel = False
@@ -469,42 +470,65 @@ def autoencoder(Xtrain, Xtest, Ytrain, Ytest):
         plt.savefig(savename, dpi = 300, bbox_inches = 'tight')
         plt.show()
     else:
-        print('Running SVM...')
-        Xtrain_enc = encoder.predict(Xtrain)
+        print('Running HDBSCAN...')
+        # Xtrain_enc = encoder.predict(Xtrain)
         Xtest_enc = encoder.predict(Xtest)
         
-        clf = SVC()
-        clf.fit(Xtrain_enc, Ytrain)
+        
+        clusterer = hdbscan.HDBSCAN(min_cluster_size=10)
+        cluster_labels = clusterer.fit_predict(Xtest)
 
-        Ytrain_pred = clf.predict(Xtrain_enc)
-        Ytest_pred = clf.predict(Xtest_enc)
+        unique_cluster_labels, cluster_counts = np.unique(cluster_labels, return_counts = True)
+        unique_true_labels, true_count = np.unique(Ytest, return_counts = True)
 
-        print('-'*40)
-        print(f'Train accuracy: {metrics.accuracy_score(Ytrain, Ytrain_pred)}')
-        print(f'Train f-score: {metrics.f1_score(Ytrain, Ytrain_pred)}')
-        print(f'Train recall: {metrics.recall_score(Ytrain, Ytrain_pred)}')
-        print('-'*40)
-        print(f'Test accuracy: {metrics.accuracy_score(Ytest, Ytest_pred)}')
-        print(f'Test f-score: {metrics.f1_score(Ytest, Ytest_pred)}')
-        print(f'Train recall: {metrics.recall_score(Ytest, Ytest_pred)}')
+                #convert the string labels to integers
+        sortloc_cluster = np.argsort(cluster_counts)
+        sortloc_true = np.argsort(true_count)
+        unique_cluster_labels = unique_cluster_labels[sortloc_cluster]
+        unique_true_labels = unique_true_labels[sortloc_true]
+
+        Ytest_int = np.zeros(len(Ytest))
+        for lab, i in zip(unique_true_labels, unique_cluster_labels):
+            Ytest_int[Ytest == lab] = i
+
+        ##### Quality measures #####
+        confusion_matrix = metrics.confusion_matrix(Ytest_int, cluster_labels)
+        print(confusion_matrix)
+
+        print('Plotting confusion matrix...')
+        plot_confusion_matrix(confusion_matrix, classes=unique_true_labels, title='Confusion matrix')
+        plt.savefig(f'{figloc}SDSS_autoencoder{modelname}_HDBSCAN_confmat.png', dpi = 300, bbox_inches = 'tight')
+        plt.close()
+
+        # print('-'*40)
+        # print(f'Train accuracy: {metrics.accuracy_score(Ytrain, Ytrain_pred)}')
+        # print(f'Train f-score: {metrics.f1_score(Ytrain, Ytrain_pred)}')
+        # print(f'Train recall: {metrics.recall_score(Ytrain, Ytrain_pred)}')
+        # print('-'*40)
+        print(f'Accuracy: {metrics.accuracy_score(Ytest_int, cluster_labels)}')
+        # print(f'Test f-score: {metrics.f1_score(Ytest, Ytest_pred)}')
+        # print(f'Recall: {metrics.recall_score(Ytest_int, cluster_labels)}')
 
 
-        #plotting
-        unique_labels = np.unique(Ytest)
+
+        #obtain colours for the different labels
+        jet = plt.get_cmap('plasma') 
+        cNorm  = colors.Normalize(vmin = 0, vmax = len(unique_cluster_labels) - 1)
+        scalarMap = cmx.ScalarMappable(norm = cNorm, cmap = jet)
 
         stepsize = 50
         for j in range(0, Xtest_enc.shape[0] - stepsize, stepsize):
             print(f'{j}/{Xtest_enc.shape[0]}')
-            for i, label in enumerate(unique_labels):
-                plt.scatter(Xtest_enc[j:j + stepsize][Ytest_pred[j:j + stepsize] == label, 0], Xtest_enc[j:j + stepsize][Ytest_pred[j:j + stepsize] == label, 1], s = 2, color = scalarMap.to_rgba(i))
+            for i, label in enumerate(unique_cluster_labels):
+                plt.scatter(Xtest_enc[j:j + stepsize][cluster_labels[j:j + stepsize] == label, 0], Xtest_enc[j:j + stepsize][cluster_labels[j:j + stepsize] == label, 1], s = 2, color = scalarMap.to_rgba(i))
 
         #make the labels for the legend
         labels = []
-        for lab in unique_labels:
-            labels.append(f'{lab} ({np.sum(Ytest_pred == lab)})')
+        for lab in unique_cluster_labels:
+            labels.append(f'{lab} ({np.sum(cluster_labels == lab)})')
 
         plt.legend(labels, loc = 'best')
-        plt.savefig(f'{figloc}SDSS_autoencoder{modelname}_SVM.png', dpi = 300, bbox_inches = 'tight')
+        plt.savefig(f'{figloc}SDSS_autoencoder{modelname}_HDBSCAN.png', dpi = 300, bbox_inches = 'tight')
         plt.show()
 
 #########################################################################
