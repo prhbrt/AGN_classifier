@@ -94,6 +94,7 @@ def prepare_data(filename, trim_columns, train_percent=0.5, verbose=True, tsne=F
     feature_names=list(all_features)
     if verbose==True: print('feature names are: ', str(feature_names))
     #return dictionary: features_train, features_test, classes_train, classes_test, class_names, feature_names
+
     if tsne==False:
         return {'features_train':features_train, 'features_test':features_test, 'classes_train':classes_train, 'classes_test':classes_test, 'class_names':class_names, 'feature_names':feature_names}
     if tsne==True:
@@ -258,37 +259,66 @@ def autoencoder(data):
     newmodel = True
 
     #version name of the model
-    modelname = '_v4'
+    modelname = '_v9'
 
     #location of the to be saved models
     modelloc = 'Models_autoencoder/'
 
-    n_epochs = 20
-    batch_size = 64
+    n_epochs = 10
+    batch_size = 128
     lossfunction = 'mean_squared_error'
     optimizer = 'rmsprop'
     learning_rate = 1e-4
-
+    mid_activation = 'relu'
     encoder_activation = 'sigmoid'
 
-    Xin = data['features_train']
-    Yin = data['classes_train']
+    Xtrain_in = data['features_train']
+    Ytrain_in = data['classes_train']
+    Xtest_in = data['features_test']
+    Ytest_in = data['classes_test']
 
+    print('Obtaining data arrays...')
     #obtain data arrays
-    X = []
-    for k in Xin.keys():
+    Xtrain = []
+    Xtest = []
+    for k in Xtrain_in.keys():
         print(f'Adding {k}')
-        X.append(Xin[k])
+        Xtrain.append(Xtrain_in[k])
+        Xtest.append(Xtest_in[k])
 
-    Y = []
-    for k in Yin.keys():
-        Y.append(Yin[k])
+    Ytrain = []
+    Ytest = []
+    for k in Ytrain_in.keys():
+        Ytrain.append(Ytrain_in[k])
+    for k in Ytest_in.keys():
+        Ytest.append(Ytest_in[k])
 
-    X = np.array(X).T
-    Y = np.array(Y)
+    Xtrain = np.array(Xtrain).T
+    Xtest = np.array(Xtest).T
+    Ytrain = np.array(Ytrain)
+    Ytest = np.array(Ytest)
+
+    print('Removing missing values')
+    #remove all rows which contain a magnitude 0
+    remove_train = ~np.any(Xtrain == 0, axis=1)
+    Xtrain = Xtrain[remove_train]
+    Ytrain = Ytrain[remove_train]
+    remove_test = ~np.any(Xtest == 0, axis=1)
+    Xtest = Xtest[remove_test]
+    Ytest = Ytest[remove_test]
+
+    print(f'Train size: {Xtrain.shape}')
+    print(f'Test size: {Xtest.shape}')
+
+    print(data['feature_names'])
+    print(Xtrain[0])
+    print(Xtrain[1])
+    print(Xtrain[2])
+
+    return 0
 
     #slice train and test data
-    Xtrain, Xtest, Ytrain, Ytest = train_test_split(X, Y, test_size=0.05, random_state=42)
+    # Xtrain, Xtest, Ytrain, Ytest = train_test_split(X, Y, test_size=0.05, random_state=42) 
 
     # Xtrain = Xtrain[:100]
     # Ytrain = Ytrain[:100]
@@ -301,12 +331,12 @@ def autoencoder(data):
     if newmodel:
         inputs = Input(shape=(Xtrain.shape[1],))
         x = BatchNormalization()(inputs)
-        x = Dense(10, activation = 'relu')(x)
-        x = Dense(5, activation = 'relu')(x)
+        x = Dense(10, activation = mid_activation)(x)
+        x = Dense(5, activation = mid_activation)(x)
         encoded = Dense(2, activation = encoder_activation)(x)
 
-        x = Dense(5, activation = 'relu')(encoded)
-        x = Dense(10, activation = 'relu')(x)
+        x = Dense(5, activation = mid_activation)(encoded)
+        x = Dense(10, activation = mid_activation)(x)
         decoded = Dense(Xtrain.shape[1], activation = 'relu')(x)
         # decoded = LeakyReLU(alpha=.001)(x)
 
@@ -319,7 +349,7 @@ def autoencoder(data):
 
         autoencoder.summary()
 
-        autoencoder.fit(Xtrain, Xtrain, 
+        history = autoencoder.fit(Xtrain, Xtrain, 
                         epochs = n_epochs, 
                         batch_size = batch_size,
                         shuffle = True)
@@ -327,20 +357,21 @@ def autoencoder(data):
         savemodel(autoencoder, f'{modelloc}autoencoder{modelname}')
         savemodel(encoder, f'{modelloc}encoder{modelname}')
 
+        #plot the progression of the loss and the accuracy
+        plt.plot(history.history['loss'])
+        plt.xlabel('Epoch')
+        plt.ylabel('Loss')
+        plt.savefig(f'{figloc}Model_history_loss{modelname}.png', dpi = 300, bbox_inches = 'tight')
+        plt.show()
+
+        plt.plot(history.history['acc'])
+        plt.xlabel('Epoch')
+        plt.ylabel('Accuracy')
+        plt.savefig(f'{figloc}Model_history_accuracy{modelname}.png', dpi = 300, bbox_inches = 'tight')
+        plt.show()
+
         #save the autoencoder settings
         modelsettings = pd.read_csv('modelsettings.csv')
-        '''
-        appenddata = pd.DataFrame(np.array([
-                                    modelname[1:],
-                                    n_epochs,
-                                    batch_size,
-                                    lossfunction,
-                                    optimizer,
-                                    encoder_activation
-                                    ]).T, 
-                                columns=list(modelsettings.columns))
-        # modelsettings.append(appenddata, ignore_index=True)
-        '''
 
         appenddata = np.array([
                                 modelname[1:],
@@ -349,6 +380,7 @@ def autoencoder(data):
                                 lossfunction,
                                 optimizer,
                                 encoder_activation,
+                                mid_activation,
                                 learning_rate
                                 ]).T
 
@@ -358,16 +390,8 @@ def autoencoder(data):
             appendloc = len(modelsettings)
         modelsettings.loc[appendloc] = appenddata
 
-        # modelsettings['Version'] = np.append(modelname[1:], modelsettings['Version'])
-        # modelsettings['n epochs'] = np.append(n_epochs, modelsettings['n epochs'])
-        # modelsettings['Batch size'] = np.append(batch_size, modelsettings['Batch size'])
-        # modelsettings['Loss function'] = np.append(lossfunction, modelsettings['Loss function'])
-        # modelsettings['Optimizer'] = np.append(optimizer, modelsettings['Optimizer'])
-        # modelsettings['Encoder activation'] = np.append(encoder_activation, modelsettings['Encoder activation'])
-
         modelsettings.to_csv('modelsettings.csv', index = False)
         
-
         del autoencoder, encoder
 
     autoencoder = loadmodel(f'{modelloc}autoencoder{modelname}')
@@ -449,3 +473,4 @@ TSNE_plot(prepared_data['all_features'], prepared_data['all_classes'], n_iter=20
 '''
 
 #something else
+
