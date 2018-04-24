@@ -309,6 +309,8 @@ def autoencoder(Xtrain, Xtest, Ytrain, Ytest):
     from keras import optimizers
 
     from sklearn.model_selection import train_test_split
+    from sklearn.svm import SVC
+    from sklearn import metrics
 
     #whether to make a new model
     newmodel = False
@@ -319,6 +321,12 @@ def autoencoder(Xtrain, Xtest, Ytrain, Ytest):
     #location of the to be saved models
     modelloc = 'Models_autoencoder/'
 
+    #whether to run a clustering algorithm
+    runclustering = True
+
+    #whether to plot the train or test set
+    plottest = True
+
     n_epochs = 2
     batch_size = 128
     lossfunction = 'mean_squared_error'
@@ -326,7 +334,7 @@ def autoencoder(Xtrain, Xtest, Ytrain, Ytest):
     learning_rate = 1e-3
     mid_activation = 'tanh'
     encoder_activation = 'tanh'
-    batchnormalization = True
+    batchnormalization = False
     dropout = False
 
     print(f'Train size: {Xtrain.shape}')
@@ -419,36 +427,85 @@ def autoencoder(Xtrain, Xtest, Ytrain, Ytest):
                           optimizer=optim,
                           metrics=['acc'])
 
-    Yenc = encoder.predict(Xtest)
+    if not runclustering:
+        if plottest:
+            Yenc = encoder.predict(Xtest)
+            Xplot = Xtest
+            Yplot = Ytest
+            unique_labels = np.unique(Ytest)
+            savename = f'{figloc}SDSS_autoencoder{modelname}_test.png'
+        else:
+            Yenc = encoder.predict(Xtrain)
+            Xplot = Xtrain
+            Yplot = Ytrain
+            savename = f'{figloc}SDSS_autoencoder{modelname}_train.png'
 
-    #find the unique labels in the test set
-    unique_labels = np.unique(Ytest)
+        #find the unique labels 
+        unique_labels = np.unique(Ytrain)
 
-    #obtain colours for the different airlines
-    jet = plt.get_cmap('plasma') 
-    cNorm  = colors.Normalize(vmin = 0, vmax = len(unique_labels) - 1)
-    scalarMap = cmx.ScalarMappable(norm = cNorm, cmap = jet)
+        #obtain colours for the different labels
+        jet = plt.get_cmap('plasma') 
+        cNorm  = colors.Normalize(vmin = 0, vmax = len(unique_labels) - 1)
+        scalarMap = cmx.ScalarMappable(norm = cNorm, cmap = jet)
 
-    stepsize = 50
-    #plot in batches of stepsize to prevent the overlap of scatter points
-    for j in range(0, Yenc.shape[0] - stepsize, stepsize):
-        for i, label in enumerate(unique_labels):
-            plt.scatter(Yenc[j:j + stepsize][Ytest[j:j + stepsize] == label, 0], Yenc[j:j + stepsize][Ytest[j:j + stepsize] == label, 1], s = 2, color = scalarMap.to_rgba(i))
+        stepsize = 50
+        #plot in batches of stepsize to prevent the overlap of scatter points
+        for j in range(0, Yenc.shape[0] - stepsize, stepsize):
+            print(f'{j}/{Yenc.shape[0]}')
+            for i, label in enumerate(unique_labels):
+                plt.scatter(Yenc[j:j + stepsize][Yplot[j:j + stepsize] == label, 0], Yenc[j:j + stepsize][Yplot[j:j + stepsize] == label, 1], s = 2, color = scalarMap.to_rgba(i))
 
-    #turn of axis labels
-    ax = plt.gca()
-    ax.xaxis.set_major_formatter(matplotlib.ticker.NullFormatter())
-    ax.yaxis.set_major_formatter(matplotlib.ticker.NullFormatter())
+        #turn of axis labels
+        # ax = plt.gca()
+        # ax.xaxis.set_major_formatter(matplotlib.ticker.NullFormatter())
+        # ax.yaxis.set_major_formatter(matplotlib.ticker.NullFormatter())
 
-    #make the labels for the legend
-    labels = []
-    for lab in unique_labels:
-        labels.append(f'{lab} ({np.sum(Ytest == lab)})')
+        #make the labels for the legend
+        labels = []
+        for lab in unique_labels:
+            labels.append(f'{lab} ({np.sum(Yplot == lab)})')
 
-    plt.legend(labels, loc = 'best')
-    plt.savefig(f'{figloc}SDSS_autoencoder{modelname}.png', dpi = 300, bbox_inches = 'tight')
-    plt.show()
+        plt.legend(labels, loc = 'best')
+        plt.savefig(savename, dpi = 300, bbox_inches = 'tight')
+        plt.show()
+    else:
+        print('Running SVM...')
+        Xtrain_enc = encoder.predict(Xtrain)
+        Xtest_enc = encoder.predict(Xtest)
+        
+        clf = SVC()
+        clf.fit(Xtrain_enc, Ytrain)
 
+        Ytrain_pred = clf.predict(Xtrain_enc)
+        Ytest_pred = clf.predict(Xtest_enc)
+
+        print('-'*40)
+        print(f'Train accuracy: {metrics.accuracy_score(Ytrain, Ytrain_pred)}')
+        print(f'Train f-score: {metrics.f1_score(Ytrain, Ytrain_pred)}')
+        print(f'Train recall: {metrics.recall_score(Ytrain, Ytrain_pred)}')
+        print('-'*40)
+        print(f'Test accuracy: {metrics.accuracy_score(Ytest, Ytest_pred)}')
+        print(f'Test f-score: {metrics.f1_score(Ytest, Ytest_pred)}')
+        print(f'Train recall: {metrics.recall_score(Ytest, Ytest_pred)}')
+
+
+        #plotting
+        unique_labels = np.unique(Ytest)
+
+        stepsize = 50
+        for j in range(0, Xtest_enc.shape[0] - stepsize, stepsize):
+            print(f'{j}/{Xtest_enc.shape[0]}')
+            for i, label in enumerate(unique_labels):
+                plt.scatter(Xtest_enc[j:j + stepsize][Ytest_pred[j:j + stepsize] == label, 0], Xtest_enc[j:j + stepsize][Ytest_pred[j:j + stepsize] == label, 1], s = 2, color = scalarMap.to_rgba(i))
+
+        #make the labels for the legend
+        labels = []
+        for lab in unique_labels:
+            labels.append(f'{lab} ({np.sum(Ytest_pred == lab)})')
+
+        plt.legend(labels, loc = 'best')
+        plt.savefig(f'{figloc}SDSS_autoencoder{modelname}_SVM.png', dpi = 300, bbox_inches = 'tight')
+        plt.show()
 
 #########################################################################
 ########################## END OF FUNCTIONS #############################
