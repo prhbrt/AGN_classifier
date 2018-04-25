@@ -13,7 +13,7 @@ Code for the ASTRON-hackathon 2018 in Dwingelo (the Netherlands)
 
 ## Neural Network to classify the SDSS-data
 
-[notebook](Neural%20Network%20SDSS.ipynb) , [data.p3](https://github.com/prinsherbert/AGN_classifier/releases/download/data-file/data.p3)
+[notebook](Neural%20Network%20SDSS.ipynb) , [data.p3](../../releases/download/data-file/data.p3)
 
 We applied a 6-layer dense neural network, 14 features, 32 relu nodes, 48 relu nodes, 32 relu nodes, 16relu nodes, 8 relu nodes, 3 softmax nodes to classify.  This is the learning curve, which ends at approximately 96% accuracy and no suggestion of overfitting. Nevertheless, we’re clueless on how to create a more complicated model, except for adding more layers, which we didn’t do.
 
